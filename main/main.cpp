@@ -3,8 +3,8 @@
 /*#include <HardwareSerial.h>*/
 
 // Pin definitions and constants
-#define DIR_PIN 25
-#define STEP_PIN 26
+#define DIR_PIN 1
+#define STEP_PIN 0
 #define STALL_PIN 27 //DIAG
 #define DRIVER_ADDRESS 2
 #define R_SENSE 0.11f
@@ -38,7 +38,7 @@ struct Result
     ResultCode resultCode;
 };
 
-TMC2209Stepper driver(&Serial2, R_SENSE, DRIVER_ADDRESS);
+TMC2209Stepper driver(&Serial1, R_SENSE, DRIVER_ADDRESS);
 
 // Configure the TMC2209 driver
 void configureDriver()
@@ -50,7 +50,7 @@ void configureDriver()
     driver.en_spreadCycle(false);
     driver.pwm_autoscale(true);
     driver.TCOOLTHRS(0xFFFFF);
-    driver.SGTHRS(40);
+    driver.SGTHRS(20);
 }
 
 // Set up the pins
@@ -160,7 +160,7 @@ void motorTask(void *pvParameters) {
 extern "C" void app_main()
 {
     Serial.begin(115200);
-    Serial2.begin(115200, SERIAL_8N1, 16, 17);
+    Serial1.begin(115200, SERIAL_8N1, 22, 12);
 
     // Configure hardware pins and attach interrupt for stall detection
     configurePins();
