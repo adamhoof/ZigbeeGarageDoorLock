@@ -38,10 +38,8 @@ struct Result
     ResultCode resultCode;
 };
 
-TMC2209Stepper driver(&Serial1, R_SENSE, DRIVER_ADDRESS);
-
 // Configure the TMC2209 driver
-void configureDriver()
+void configureDriver(TMC2209Stepper& driver)
 {
     driver.begin();
     driver.toff(5);
@@ -62,13 +60,14 @@ void configurePins()
 }
 
 // Move stepper until a stall is detected or maximum steps reached
-Result moveUntilStall(const size_t maxSteps, const Direction dir)
+Result moveUntilStall(TMC2209Stepper& driver, const size_t maxSteps, const Direction dir)
 {
     size_t doneSteps = 0;
     stalled = false;
     driver.shaft(dir);
+    driver.
 
-    unsigned long lastStepTime = micros();  // Store the last step time
+    unsigned long lastStepTime = micros(); // Store the last step time
 
     while (true) {
         if (stalled) {
@@ -79,10 +78,11 @@ Result moveUntilStall(const size_t maxSteps, const Direction dir)
         }
 
         unsigned long now = micros();
-        if (now - lastStepTime >= 320) {  // 160us HIGH + 160us LOW = 320us per step
+        if (now - lastStepTime >= 320) {
+            // 160us HIGH + 160us LOW = 320us per step
             lastStepTime = now;
             digitalWrite(STEP_PIN, HIGH);
-            delayMicroseconds(1);  // Short pulse for HIGH state
+            delayMicroseconds(1); // Short pulse for HIGH state
             digitalWrite(STEP_PIN, LOW);
             ++doneSteps;
         }
@@ -93,7 +93,7 @@ Result moveUntilStall(const size_t maxSteps, const Direction dir)
 
 
 // Move a set number of steps
-Result moveSteps(size_t stepsLeft, const Direction dir)
+Result moveSteps(TMC2209Stepper& driver, size_t stepsLeft, const Direction dir)
 {
     size_t doneSteps = 0;
     stalled = false;
@@ -113,52 +113,56 @@ Result moveSteps(size_t stepsLeft, const Direction dir)
 }
 
 // Open the lock by moving the motor in the BACKWARD direction
-void openLock()
+void openLock(TMC2209Stepper& driver)
 {
     uint8_t counter = 0;
-    Result res = moveSteps(fullPathStepCount, BACKWARD);
+    Result res = moveSteps(driver, fullPathStepCount, BACKWARD);
     while (res.resultCode != MOVE_OK) {
         if (counter == 3) {
             Serial.println("Lock bricked");
             break;
         }
-        res = moveSteps(fullPathStepCount - res.steps, BACKWARD);
+        res = moveSteps(driver, fullPathStepCount - res.steps, BACKWARD);
         ++counter;
     }
 }
 
 // Close the lock by moving until a stall is detected (FORWARD direction)
-void closeLock()
+void closeLock(TMC2209Stepper& driver)
 {
     uint8_t counter = 0;
-    Result res = moveUntilStall(fullPathStepCount + offsetSteps, FORWARD);
+    Result res = moveUntilStall(driver, fullPathStepCount + offsetSteps, FORWARD);
     while (res.resultCode != MOVE_STALL) {
         if (counter == 3) {
             Serial.println("Lock bricked");
             break;
         }
-        res = moveUntilStall(fullPathStepCount + offsetSteps - res.steps, FORWARD);
+        res = moveUntilStall(driver, fullPathStepCount + offsetSteps - res.steps, FORWARD);
         ++counter;
     }
 }
 
 // Home the lock by closing it
-void homeLock()
+void homeLock(TMC2209Stepper& driver)
 {
-    closeLock();
+    closeLock(driver);
 }
 
 
-void motorTask(void *pvParameters) {
-    homeLock();
+void motorTask(void* pvParameters)
+{
+    auto driver = static_cast<TMC2209Stepper*>(pvParameters);
+    homeLock(*driver);
     while (true) {
-        Serial.println(driver.microsteps());
-        vTaskDelay(pdMS_TO_TICKS(1000));  // FreeRTOS-friendly delay
+        Serial.println(driver->microsteps());
+        vTaskDelay(pdMS_TO_TICKS(1000)); // FreeRTOS-friendly delay
     }
 }
 
 extern "C" void app_main()
 {
+    auto* driver = new TMC2209Stepper(&Serial1, R_SENSE, DRIVER_ADDRESS);
+
     Serial.begin(115200);
     Serial1.begin(115200, SERIAL_8N1, 22, 12);
 
@@ -167,7 +171,7 @@ extern "C" void app_main()
     attachInterrupt(digitalPinToInterrupt(STALL_PIN), stallInterrupt, RISING);
 
     // Initialize and configure the driver
-    configureDriver();
+    configureDriver(*driver);
     delay(100);
-    xTaskCreate(motorTask, "MotorTask", 4096, nullptr, 1, nullptr);
+    xTaskCreate(motorTask, "MotorTask", 4096, driver, 1, nullptr);
 }
